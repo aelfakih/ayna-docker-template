@@ -18,8 +18,8 @@ ERRORS=0
 WARNINGS=0
 
 log_ok() { echo -e "${GREEN}✓${NC} $1"; }
-log_warn() { echo -e "${YELLOW}⚠${NC} $1"; ((WARNINGS++)); }
-log_error() { echo -e "${RED}✗${NC} $1"; ((ERRORS++)); }
+log_warn() { echo -e "${YELLOW}⚠${NC} $1"; WARNINGS=$((WARNINGS+1)); }
+log_error() { echo -e "${RED}✗${NC} $1"; ERRORS=$((ERRORS+1)); }
 log_info() { echo -e "  $1"; }
 
 echo "================================================"
