@@ -9,8 +9,8 @@ services:
       context: ..
       dockerfile: docker/api.Dockerfile
       target: production
-    image: ${PROJECT_NAME:-myproject}-api:latest
-    container_name: ${PROJECT_NAME:-myproject}-api
+    image: ${PROJECT_NAME}-api:latest
+    container_name: ${PROJECT_NAME}-api
     restart: unless-stopped
     ports:
       - "${API_PORT:-8000}:8000"
@@ -40,7 +40,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ${PROJECT_NAME:-myproject}-redis
+    container_name: ${PROJECT_NAME}-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:

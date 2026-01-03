@@ -65,6 +65,33 @@ project/
 4. Include health checks for all services
 5. Use named volumes for persistence
 6. Services expose ports, Caddy handles external access
+7. Use explicit `container_name: ${PROJECT_NAME}-<service>`
+
+## Container Naming
+
+All containers MUST be named with the project prefix:
+
+```yaml
+container_name: ${PROJECT_NAME}-api
+container_name: ${PROJECT_NAME}-web
+container_name: ${PROJECT_NAME}-docs
+container_name: ${PROJECT_NAME}-redis
+container_name: ${PROJECT_NAME}-celery
+```
+
+This ensures containers are identifiable when multiple projects run on the same server.
+
+## Port Registry
+
+See `PORT_REGISTRY.md` for assigned port ranges. Each project gets 10 ports:
+
+| Project | Range |
+|---------|-------|
+| ayna | 8100-8109 |
+| ayna-fly | 8110-8119 |
+| aynasite | 8120-8129 |
+| uavcrew | 8130-8139 |
+| skybookus | 8140-8149 |
 
 ## Environment Variables
 
