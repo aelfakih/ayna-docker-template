@@ -15,7 +15,7 @@ cd ~/repos/myproject
 
 ```bash
 # Clone template
-git clone https://github.com/ayna-ai/ayna-docker-template.git /tmp/template
+git clone https://github.com/aelfakih/ayna-docker-template.git /tmp/template
 
 # Copy required files
 cp -r /tmp/template/{Makefile,validate.sh,.env.example} .

@@ -9,7 +9,7 @@
 set -e
 
 # Template repository
-TEMPLATE_REPO="https://github.com/ayna-ai/ayna-docker-template.git"
+TEMPLATE_REPO="https://github.com/aelfakih/ayna-docker-template.git"
 TEMPLATE_BRANCH="main"
 
 # Colors
