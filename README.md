@@ -1,30 +1,40 @@
-# Ayna Docker Deployment Template
+# Ayna Deployment Template
 
-Standard Docker deployment pattern for all Ayna projects.
+Standard deployment pattern for all Ayna Python projects.
+
+## Version 2.0 - Unified Standard
+
+**v2.0** replaces Docker with Poe + systemd for simpler debugging and maintenance.
+
+See [UNIFIED_STANDARD.md](UNIFIED_STANDARD.md) for full specification.
+
+### Why the Change?
+
+- **Simpler debugging** - Direct process access, no container layers
+- **Proven approach** - Based on ayna-comply's 288+ successful deployments
+- **One mental model** - Same tools everywhere
 
 ## Quick Start
 
-### Create a New Project
+### New Project
 
 ```bash
 ./init.sh myproject ~/repos
 cd ~/repos/myproject
 ```
 
-### Apply to Existing Project
+### Existing Project
 
 ```bash
-# Clone template
-git clone https://github.com/aelfakih/ayna-docker-template.git /tmp/template
-
 # Copy required files
-cp -r /tmp/template/{Makefile,validate.sh,.env.example} .
-cp -r /tmp/template/{docker,compose,caddy,scripts} .
+cp -r /path/to/template/{Makefile,validate.sh,.env.example} .
+cp -r /path/to/template/scripts .
+mkdir -p systemd
 
 # Track template version
-echo "1.0.0" > .template-version
+echo "2.0.0" > .template-version
 
-# Customize and run
+# Validate
 make validate
 ```
 
@@ -32,97 +42,103 @@ make validate
 
 | Command | Description |
 |---------|-------------|
-| `make run` | Start development environment (hot reload) |
-| `make build` | Build all Docker images |
-| `make prod` | Start production environment |
-| `make deploy` | Blue-green deployment with health check |
-| `make rollback` | Instant rollback to previous version |
-| `make migrate` | Run database migrations |
-| `make shell` | Open shell in API container |
-| `make logs` | Stream logs |
+| `make run` | Start development server |
+| `make deploy` | Blue-green deployment |
+| `make rollback` | Instant rollback |
+| `make migrate` | Database migrations |
+| `make shell` | Application shell |
+| `make start` | Start all services |
 | `make stop` | Stop all services |
+| `make restart` | Restart all services |
 | `make status` | Show service status |
-| `make validate` | Check conformance to standard |
+| `make logs` | Stream logs |
+| `make validate` | Check conformance |
+
+## Architecture
+
+```
+User types:     make deploy
+                    ↓
+Makefile calls: poe deploy production
+                    ↓
+Poe runs:       scripts/poe_commands.py
+                    ↓
+Which does:     git pull → migrate → symlink switch → systemctl reload
+```
 
 ## Directory Structure
 
 ```
-project/
-├── docker/                 # Dockerfiles only
-│   ├── api.Dockerfile
-│   ├── web.Dockerfile      # Optional: Django/frontend
-│   └── docs.Dockerfile     # Optional: Documentation
-├── compose/
-│   ├── dev.yml            # Development (hot reload)
-│   └── prod.yml           # Production (built images)
-├── caddy/
-│   └── Caddyfile          # Reverse proxy config
+/opt/ayna/{project}/
+├── releases/               # Versioned releases (blue-green)
+│   ├── v1/
+│   ├── v2/
+│   └── current -> v2       # Symlink to active release
+├── shared/                 # Persistent across releases
+│   ├── media/
+│   ├── backups/
+│   └── .env.production
+├── venv/                   # Python virtual environment
+│
+├── Makefile                # Universal command interface
+├── pyproject.toml          # Poe tasks + dependencies
+├── validate.sh             # Conformance checker
+├── .template-version       # "2.0.0"
+│
 ├── scripts/
-│   ├── entrypoint.sh      # Container startup
-│   └── update-template.sh # Pull template updates
-├── Makefile               # Universal command interface
-├── .env.example           # Template environment file
-├── .env                   # Local config (gitignored)
-├── validate.sh            # Conformance checker
-├── .template-version      # Tracks template version
-└── src/                   # Application code
+│   └── poe_commands.py     # Poe implementations
+├── systemd/                # Service unit files
+│   ├── {project}-web.service
+│   ├── {project}-api.service
+│   └── {project}-celery.service
+│
+└── web/                    # Application code
 ```
 
-## Updating from Template
+## Port Registry
 
-Projects can pull the latest template changes:
+Each project gets 10 ports (bind to 127.0.0.1 only):
 
-```bash
-make update-template
-```
-
-This updates:
-- `validate.sh`
-- `scripts/update-template.sh`
-- `scripts/entrypoint.sh`
-
-It will NOT overwrite your customizations to:
-- `Makefile`
-- `compose/*.yml`
-- `docker/*.Dockerfile`
-- `.env` or `.env.example`
-
-## Conformance Validation
-
-Run the validator to check your project follows the standard:
-
-```bash
-./validate.sh
-```
-
-Checks include:
-- Required files exist
-- Makefile has all required targets
-- Dockerfiles follow best practices
-- Compose files have health checks
-- Environment variables documented
+| Project | Range | Web | API | Docs |
+|---------|-------|-----|-----|------|
+| ayna-comply | 8100-8109 | 8100 | 8101 | 8102 |
+| ayna-fly | 8110-8119 | 8110 | 8111 | 8112 |
+| aynasite | 8120-8129 | 8120 | 8121 | 8122 |
+| uavcrew | 8130-8139 | 8130 | 8131 | 8132 |
+| skybookus | 8140-8149 | 8140 | 8141 | 8142 |
 
 ## Blue-Green Deployment
 
-The `make deploy` command implements zero-downtime deployment:
-
-1. Tags current image as `:rollback`
-2. Builds new image
-3. Starts new container
-4. Runs health check (5 second timeout)
-5. If healthy: deployment complete
-6. If unhealthy: automatic rollback
-
-Manual rollback:
 ```bash
-make rollback
+make deploy
+```
+
+1. Creates new release directory
+2. Git pull / copy code
+3. Install dependencies
+4. Run migrations
+5. Collect static files
+6. Switch symlink to new release
+7. Reload services
+8. Health check (auto-rollback if failed)
+
+```bash
+make rollback  # Instant rollback via symlink switch
 ```
 
 ## Version History
 
-- **1.0.0** - Initial release
-  - Standard directory structure
-  - Makefile with required targets
-  - Blue-green deployment support
-  - Conformance validation
-  - Template self-update capability
+- **2.0.0** - Unified standard (Poe + systemd)
+  - Replaces Docker-based approach
+  - Based on ayna-comply's proven patterns
+  - Adds port registry
+  - Adds conformance validation
+
+- **1.0.0** - Initial Docker-based release (deprecated)
+  - Docker compose deployment
+  - Container-based blue-green
+
+## Legacy Docker Support
+
+Docker artifacts (docker/, compose/) preserved in `legacy/` branch for reference.
+Projects needing containerization can still use v1.0.0 patterns.
