@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Ayna Deployment Standard v2.0 - Conformance Validator
+# Ayna Deployment Standard v2.1 - Conformance Validator
 #
 # Checks that a project conforms to the Ayna Deployment Standard.
 # Run from project root: ./validate.sh
@@ -22,7 +22,7 @@ log_error() { echo -e "${RED}✗${NC} $1"; ERRORS=$((ERRORS+1)); }
 log_info() { echo -e "  $1"; }
 
 echo "================================================"
-echo "Ayna Deployment Standard v2.0 - Conformance Check"
+echo "Ayna Deployment Standard v2.1 - Conformance Check"
 echo "================================================"
 echo ""
 
@@ -208,6 +208,6 @@ elif [ $ERRORS -eq 0 ]; then
 else
     echo -e "${RED}$ERRORS error(s), $WARNINGS warning(s)${NC}"
     echo ""
-    echo "Fix the errors above to conform to the Ayna Deployment Standard v2.0."
+    echo "Fix the errors above to conform to the Ayna Deployment Standard v2.1."
     exit 1
 fi

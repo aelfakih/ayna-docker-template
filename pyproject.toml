@@ -1,0 +1,321 @@
+# Ayna Deployment Standard v2.1 - pyproject.toml Template
+#
+# Copy this file to your project and customize:
+# 1. Update [project] section with your project details
+# 2. Update [tool.poe.env] with your project settings
+# 3. Add your project dependencies
+
+[project]
+name = "myproject"  # TODO: Change to your project name
+version = "0.1.0"
+description = "Project description"
+readme = "README.md"
+license = {text = "Proprietary"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+
+dependencies = [
+    # Shared dependencies
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.26.0",
+]
+
+[project.optional-dependencies]
+web = [
+    # Django core
+    "Django>=5.0.1",
+    "django-environ>=0.11.2",
+    "django-cors-headers>=4.3.1",
+    "djangorestframework>=3.14.0",
+    "whitenoise>=6.6.0",
+
+    # Database
+    "psycopg2-binary>=2.9.9",
+
+    # Task queue
+    "celery>=5.3.4",
+    "redis>=5.0.1",
+
+    # Production
+    "gunicorn>=21.2.0",
+]
+
+api = [
+    # FastAPI core
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+
+    # Auth
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.6",
+
+    # Cache/Session
+    "redis>=5.0.1",
+]
+
+dev = [
+    # Testing
+    "pytest>=7.4.3",
+    "pytest-django>=4.7.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "factory-boy>=3.3.0",
+
+    # Code quality
+    "black>=23.12.0",
+    "ruff>=0.1.11",
+    "mypy>=1.8.0",
+
+    # Type stubs
+    "django-stubs>=4.2.0",
+    "types-redis>=4.6.0",
+]
+
+all = [
+    "myproject[web,api,dev]",  # TODO: Update project name
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["api", "web"]
+
+# =============================================================================
+# Tool Configuration
+# =============================================================================
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+exclude = '''
+/(
+    \.eggs
+    | \.git
+    | \.mypy_cache
+    | \.venv
+    | venv
+    | _build
+    | migrations
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".venv",
+    "venv",
+    "migrations",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "S101",  # use of assert detected
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["migrations", "venv"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "*_test.py"]
+addopts = ["--strict-markers", "-ra", "-q"]
+testpaths = ["tests"]
+
+# =============================================================================
+# Poethepoet Task Runner
+# Ayna Deployment Standard v2.1
+# =============================================================================
+
+[tool.poe]
+envfile = ".env"
+
+[tool.poe.env]
+DJANGO_SETTINGS_MODULE = "config.settings.development"
+PROJECT_ROOT = "/opt/ayna/myproject"  # TODO: Update project path
+
+# =============================================================================
+# DEVELOPMENT
+# =============================================================================
+
+[tool.poe.tasks.dev]
+help = "Start development server (Django)"
+script = "scripts.poe_commands:dev"
+
+[tool.poe.tasks."dev:web"]
+help = "Start Django development server"
+script = "scripts.poe_commands:dev_web"
+
+[tool.poe.tasks."dev:api"]
+help = "Start FastAPI development server"
+script = "scripts.poe_commands:dev_api"
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+
+[tool.poe.tasks.migrate]
+help = "Run database migrations"
+script = "scripts.poe_commands:migrate"
+
+[tool.poe.tasks.makemigrations]
+help = "Create new migrations"
+script = "scripts.poe_commands:makemigrations"
+
+[tool.poe.tasks.shell]
+help = "Django shell"
+script = "scripts.poe_commands:shell"
+
+[tool.poe.tasks.dbshell]
+help = "Database shell"
+script = "scripts.poe_commands:dbshell"
+
+# =============================================================================
+# STATIC FILES
+# =============================================================================
+
+[tool.poe.tasks.collectstatic]
+help = "Collect static files"
+script = "scripts.poe_commands:collectstatic"
+
+# =============================================================================
+# SERVICES MANAGEMENT (systemd)
+# =============================================================================
+
+[tool.poe.tasks."services:status"]
+help = "Check status of all services"
+script = "scripts.poe_commands:services_status"
+
+[tool.poe.tasks."services:start"]
+help = "Start all services"
+script = "scripts.poe_commands:services_start"
+
+[tool.poe.tasks."services:stop"]
+help = "Stop all services"
+script = "scripts.poe_commands:services_stop"
+
+[tool.poe.tasks."services:restart"]
+help = "Restart all services"
+script = "scripts.poe_commands:services_restart"
+
+[tool.poe.tasks."services:reload"]
+help = "Gracefully reload all services"
+script = "scripts.poe_commands:services_reload"
+
+[tool.poe.tasks.logs]
+help = "Stream logs from all services"
+script = "scripts.poe_commands:logs"
+
+# =============================================================================
+# DEPLOYMENT (Blue-Green)
+# =============================================================================
+
+[tool.poe.tasks.deploy]
+help = "Blue-green deployment"
+script = "scripts.poe_commands:deploy"
+args = [
+    { name = "env", positional = true, required = false, default = "production", help = "Environment: dev, staging, production" },
+    { name = "skip-backup", options = ["--skip-backup"], type = "boolean", default = false, help = "Skip database backup" }
+]
+
+[tool.poe.tasks.rollback]
+help = "Instant rollback to previous release"
+script = "scripts.poe_commands:rollback"
+
+[tool.poe.tasks."db:backup"]
+help = "Create database backup"
+script = "scripts.poe_commands:db_backup"
+args = [
+    { name = "env", positional = true, required = false, default = "dev", help = "Environment: dev, staging, production" }
+]
+
+[tool.poe.tasks."releases:cleanup"]
+help = "Remove old releases (keep last N)"
+script = "scripts.poe_commands:releases_cleanup"
+args = [
+    { name = "keep", options = ["--keep", "-k"], type = "int", default = 10, help = "Number of releases to keep" }
+]
+
+# =============================================================================
+# ENVIRONMENT
+# =============================================================================
+
+[tool.poe.tasks."env:setup"]
+help = "Setup .env symlink for environment"
+script = "scripts.poe_commands:env_setup"
+args = [
+    { name = "env", positional = true, required = false, default = "dev", help = "Environment: dev, staging, production" }
+]
+
+[tool.poe.tasks."env:check"]
+help = "Verify environment setup"
+script = "scripts.poe_commands:env_check"
+
+# =============================================================================
+# TESTING & CODE QUALITY
+# =============================================================================
+
+[tool.poe.tasks.test]
+help = "Run test suite"
+cmd = "pytest"
+
+[tool.poe.tasks."test:cov"]
+help = "Run tests with coverage"
+cmd = "pytest --cov --cov-report=html"
+
+[tool.poe.tasks."test:web"]
+help = "Run web tests only"
+cmd = "pytest tests/unit/web tests/integration/web"
+
+[tool.poe.tasks."test:api"]
+help = "Run API tests only"
+cmd = "pytest tests/unit/api tests/integration/api"
+
+[tool.poe.tasks.lint]
+help = "Run linters"
+cmd = "ruff check ."
+
+[tool.poe.tasks."lint:fix"]
+help = "Fix lint issues"
+cmd = "ruff check . --fix"
+
+[tool.poe.tasks.format]
+help = "Format code"
+cmd = "black ."
+
+[tool.poe.tasks."format:check"]
+help = "Check code formatting"
+cmd = "black . --check"
+
+[tool.poe.tasks.typecheck]
+help = "Run type checking"
+cmd = "mypy ."
+
+[tool.poe.tasks.quality]
+help = "Run all quality checks"
+sequence = ["format:check", "lint", "typecheck"]

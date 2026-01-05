@@ -1,0 +1,48 @@
+# Ayna Deployment Standard v2.1 - API Service Template
+#
+# FastAPI/Uvicorn API server service
+#
+# Installation:
+#   1. Copy to /etc/systemd/system/
+#   2. Replace "myproject" with your project name
+#   3. Update port (API_PORT) per PORT_REGISTRY.md
+#   4. sudo systemctl daemon-reload
+#   5. sudo systemctl enable myproject-api
+#   6. sudo systemctl start myproject-api
+
+[Unit]
+Description=MyProject API Server (FastAPI/Uvicorn)
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/ayna/myproject/releases/current
+
+# Environment
+EnvironmentFile=/opt/ayna/myproject/.env
+
+# Uvicorn command
+ExecStart=/opt/ayna/myproject/venv/bin/uvicorn api.main:app \
+    --host 0.0.0.0 \
+    --port 8101 \
+    --workers 4 \
+    --loop uvloop \
+    --http httptools \
+    --access-log
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/ayna/myproject/shared /var/log/ayna/myproject
+
+[Install]
+WantedBy=multi-user.target

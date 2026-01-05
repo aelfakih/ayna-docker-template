@@ -1,4 +1,4 @@
-# Ayna Deployment Standard v2.0 - Makefile Template
+# Ayna Deployment Standard v2.1 - Makefile Template
 #
 # This Makefile wraps Poe tasks for a universal interface.
 # Copy to your project and customize the variables below.
@@ -183,7 +183,7 @@ install-services:
 
 ## help: Show this help message
 help:
-	@echo "$(GREEN)$(PROJECT_NAME) - Ayna Deployment Standard v2.0$(NC)"
+	@echo "$(GREEN)$(PROJECT_NAME) - Ayna Deployment Standard v2.1$(NC)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make run              Start development server"

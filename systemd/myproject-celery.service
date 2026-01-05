@@ -1,0 +1,51 @@
+# Ayna Deployment Standard v2.1 - Celery Worker Template
+#
+# Celery worker service for background tasks
+#
+# Installation:
+#   1. Copy to /etc/systemd/system/
+#   2. Replace "myproject" with your project name
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable myproject-celery
+#   5. sudo systemctl start myproject-celery
+
+[Unit]
+Description=MyProject Celery Worker
+After=network.target redis.service postgresql.service
+Wants=redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/ayna/myproject/releases/current/web
+
+# Environment
+EnvironmentFile=/opt/ayna/myproject/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings.production
+
+# Celery command
+ExecStart=/opt/ayna/myproject/venv/bin/celery \
+    -A config worker \
+    --loglevel=INFO \
+    --concurrency=4 \
+    --max-tasks-per-child=1000
+
+# Graceful shutdown
+ExecStop=/bin/kill -s TERM $MAINPID
+KillSignal=SIGTERM
+TimeoutStopSec=600
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/ayna/myproject/shared /var/log/ayna/myproject
+
+[Install]
+WantedBy=multi-user.target

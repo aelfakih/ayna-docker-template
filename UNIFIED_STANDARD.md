@@ -1,4 +1,4 @@
-# Ayna Deployment Standard v2.0
+# Ayna Deployment Standard v2.1
 
 **Replaces**: Docker Template v1.0.0
 **Based on**: ayna-comply's proven Poe + systemd approach
@@ -101,7 +101,7 @@ Every project MUST implement these targets:
 ### Template Makefile
 
 ```makefile
-# Ayna Deployment Standard v2.0
+# Ayna Deployment Standard v2.1
 # Makefile wraps Poe tasks for universal interface
 
 PROJECT_NAME ?= myproject
@@ -163,7 +163,7 @@ lint:
 
 # Help
 help:
-	@echo "$(GREEN)$(PROJECT_NAME) - Ayna Deployment Standard v2.0$(NC)"
+	@echo "$(GREEN)$(PROJECT_NAME) - Ayna Deployment Standard v2.1$(NC)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make run        Start development server"
@@ -278,15 +278,48 @@ WantedBy=multi-user.target
 The `make deploy` (via `poe deploy`) process:
 
 ```
-1. Create new release directory (releases/v{N+1}/)
-2. Git pull or copy code
-3. Install/update dependencies in venv
-4. Run database migrations
-5. Collect static files
-6. Switch symlink: current -> v{N+1}
-7. Reload services (systemctl reload)
-8. Health check
-9. If unhealthy: automatic rollback
+1. Database backup (unless --skip-backup)
+2. Create new release directory (releases/v{N+1}/)
+3. Git archive code to release
+4. Install/update dependencies in venv
+5. Run database migrations
+6. Collect static files
+7. Switch symlink: current -> v{N+1}
+8. Reload services (systemctl reload)
+9. Health check
+10. If unhealthy: automatic rollback
+11. Cleanup old releases (keep last 10)
+```
+
+### Deploy Options
+
+```bash
+# Full deploy with backup
+make deploy ENV=production
+
+# Skip database backup (faster)
+poe deploy production --skip-backup
+```
+
+### Database Backup
+
+Automatic backup before each deploy (unless skipped):
+
+```bash
+# Manual backup
+poe db:backup dev
+
+# Backups stored in:
+# shared/backups/{project}_{env}_{timestamp}.sql.gz
+```
+
+### Release Cleanup
+
+Old releases are automatically pruned after successful deployment:
+
+```bash
+# Manual cleanup (keep last 10)
+poe releases:cleanup --keep 10
 ```
 
 ### Rollback
@@ -415,6 +448,13 @@ Estimated effort: **2-3 hours**
 ---
 
 ## Version History
+
+- **2.1.0** - Production features
+  - Database backup before deploy (with `--skip-backup` option)
+  - Automatic release cleanup (keep last 10)
+  - Template pyproject.toml with all Poe tasks
+  - Template scripts/poe_commands.py with full implementation
+  - Template systemd service files
 
 - **2.0.0** - Unified standard (Makefile + Poe + systemd)
   - Replaces Docker-based v1.0.0
