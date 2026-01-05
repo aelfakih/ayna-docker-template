@@ -1,22 +1,25 @@
-# Ayna Docker Deployment Standard - Makefile Template
-# Version: 1.0.0
+# Ayna Deployment Standard v2.0 - Makefile Template
 #
-# This Makefile provides a universal interface for all Ayna Docker projects.
-# Copy this to your project and customize the variables below.
+# This Makefile wraps Poe tasks for a universal interface.
+# Copy to your project and customize the variables below.
 
 # =============================================================================
 # Project Configuration (customize these)
 # =============================================================================
 
 PROJECT_NAME ?= myproject
-API_PORT ?= 8000
-WEB_PORT ?= 8001
-DOCS_PORT ?= 8002
+PROJECT_ROOT ?= /opt/ayna/$(PROJECT_NAME)
+WEB_PORT ?= 8100
+API_PORT ?= 8101
+DOCS_PORT ?= 8102
 
-# Compose files
-COMPOSE_DEV = compose/dev.yml
-COMPOSE_PROD = compose/prod.yml
-ENV_FILE = .env
+# Paths
+VENV := $(PROJECT_ROOT)/venv
+POE := $(VENV)/bin/poe
+PYTHON := $(VENV)/bin/python
+
+# Environment (default: dev for safety)
+ENV ?= dev
 
 # Colors
 GREEN := \033[0;32m
@@ -25,116 +28,154 @@ RED := \033[0;31m
 NC := \033[0m
 
 # =============================================================================
-# Required Targets (DO NOT REMOVE)
+# Required Targets
 # =============================================================================
 
-.PHONY: run build prod deploy rollback migrate shell logs stop status validate help
+.PHONY: run deploy rollback migrate shell logs start stop restart status validate help
 
-## run: Start development environment with hot reload
+## run: Start development server
 run:
-	@echo "$(GREEN)[DEV]$(NC) Starting development environment..."
-	docker compose -f $(COMPOSE_DEV) --env-file $(ENV_FILE) up
+	@$(POE) dev
 
-## build: Build all Docker images
-build:
-	@echo "$(GREEN)[BUILD]$(NC) Building all images..."
-	docker compose -f $(COMPOSE_PROD) --env-file $(ENV_FILE) build
+## run-web: Start web server only
+run-web:
+	@$(POE) dev:web
 
-## prod: Start production environment
-prod:
-	@echo "$(GREEN)[PROD]$(NC) Starting production environment..."
-	docker compose -f $(COMPOSE_PROD) --env-file $(ENV_FILE) up -d
+## run-api: Start API server only
+run-api:
+	@$(POE) dev:api
 
-## deploy: Blue-green deployment with health check
+# =============================================================================
+# Deployment (Blue-Green)
+# =============================================================================
+
+## deploy: Blue-green deployment (use ENV=dev|staging|production)
 deploy:
-	@echo "$(GREEN)[DEPLOY]$(NC) Starting blue-green deployment..."
-	@# Tag current image as rollback
-	@docker tag $(PROJECT_NAME)-api:latest $(PROJECT_NAME)-api:rollback 2>/dev/null || true
-	@# Build new image
-	docker compose -f $(COMPOSE_PROD) --env-file $(ENV_FILE) build
-	@# Start new container
-	docker compose -f $(COMPOSE_PROD) --env-file $(ENV_FILE) up -d
-	@# Health check
-	@echo "$(YELLOW)[DEPLOY]$(NC) Waiting for health check..."
-	@sleep 5
-	@if docker compose -f $(COMPOSE_PROD) ps | grep -q "unhealthy"; then \
-		echo "$(RED)[DEPLOY]$(NC) Health check failed! Rolling back..."; \
-		$(MAKE) rollback; \
-		exit 1; \
-	fi
-	@echo "$(GREEN)[DEPLOY]$(NC) Deployment successful!"
+	@$(POE) deploy $(ENV)
 
-## rollback: Instant rollback to previous version
+## rollback: Instant rollback to previous release
 rollback:
-	@echo "$(YELLOW)[ROLLBACK]$(NC) Rolling back to previous version..."
-	@docker tag $(PROJECT_NAME)-api:rollback $(PROJECT_NAME)-api:latest 2>/dev/null || \
-		(echo "$(RED)[ROLLBACK]$(NC) No rollback image found!" && exit 1)
-	docker compose -f $(COMPOSE_PROD) --env-file $(ENV_FILE) up -d --force-recreate
-	@echo "$(GREEN)[ROLLBACK]$(NC) Rollback complete!"
+	@$(POE) rollback
 
-## migrate: Run database migrations
-migrate:
-	@echo "$(GREEN)[MIGRATE]$(NC) Running migrations..."
-	docker compose -f $(COMPOSE_PROD) exec api python manage.py migrate --noinput 2>/dev/null || \
-	docker compose -f $(COMPOSE_PROD) exec api alembic upgrade head 2>/dev/null || \
-	echo "$(YELLOW)[MIGRATE]$(NC) No migration command found"
+# =============================================================================
+# Services (systemd)
+# =============================================================================
 
-## shell: Open shell in API container
-shell:
-	docker compose -f $(COMPOSE_PROD) exec api /bin/bash 2>/dev/null || \
-	docker compose -f $(COMPOSE_PROD) exec api /bin/sh
-
-## logs: Stream logs from all services
-logs:
-	docker compose -f $(COMPOSE_PROD) logs -f
+## start: Start all services
+start:
+	@$(POE) services:start
 
 ## stop: Stop all services
 stop:
-	@echo "$(YELLOW)[STOP]$(NC) Stopping all services..."
-	docker compose -f $(COMPOSE_PROD) down
-	docker compose -f $(COMPOSE_DEV) down 2>/dev/null || true
-	@echo "$(GREEN)[STOP]$(NC) All services stopped."
+	@$(POE) services:stop
+
+## restart: Restart all services
+restart:
+	@$(POE) services:restart
+
+## reload: Gracefully reload all services
+reload:
+	@$(POE) services:reload
 
 ## status: Show service status and health
 status:
-	@echo "$(GREEN)=== $(PROJECT_NAME) Services ===$(NC)"
-	@docker compose -f $(COMPOSE_PROD) ps 2>/dev/null || echo "Production not running"
-	@echo ""
-	@echo "$(GREEN)=== Health Checks ===$(NC)"
-	@curl -sf http://localhost:$(API_PORT)/health > /dev/null 2>&1 && \
-		echo "API:  $(GREEN)healthy$(NC)" || echo "API:  $(RED)unhealthy$(NC)"
+	@$(POE) services:status
 
-## validate: Check conformance to Ayna Docker standard
-validate:
-	@./validate.sh
-
-## update-template: Pull latest template changes
-update-template:
-	@echo "$(GREEN)[UPDATE]$(NC) Checking for template updates..."
-	@./scripts/update-template.sh
+## logs: Stream logs from all services
+logs:
+	@$(POE) logs
 
 # =============================================================================
-# Optional Targets (customize as needed)
+# Database
 # =============================================================================
 
-## test: Run tests
+## migrate: Run database migrations
+migrate:
+	@$(POE) migrate
+
+## makemigrations: Create new migrations
+makemigrations:
+	@$(POE) makemigrations
+
+## shell: Open application shell
+shell:
+	@$(POE) shell
+
+## dbshell: Open database shell
+dbshell:
+	@$(POE) dbshell
+
+# =============================================================================
+# Static Files
+# =============================================================================
+
+## collectstatic: Collect static files
+collectstatic:
+	@$(POE) collectstatic
+
+# =============================================================================
+# Testing & Quality
+# =============================================================================
+
+## test: Run test suite
 test:
-	docker compose -f $(COMPOSE_DEV) exec api pytest
+	@$(POE) test
+
+## test-cov: Run tests with coverage
+test-cov:
+	@$(POE) test:cov
 
 ## lint: Run linters
 lint:
-	docker compose -f $(COMPOSE_DEV) exec api ruff check .
+	@$(POE) lint
+
+## lint-fix: Fix lint issues
+lint-fix:
+	@$(POE) lint:fix
 
 ## format: Format code
 format:
-	docker compose -f $(COMPOSE_DEV) exec api ruff format .
+	@$(POE) format
 
-## clean: Remove all containers, images, and volumes
-clean:
-	@echo "$(RED)[CLEAN]$(NC) Removing all project resources..."
-	docker compose -f $(COMPOSE_PROD) down -v --rmi local 2>/dev/null || true
-	docker compose -f $(COMPOSE_DEV) down -v --rmi local 2>/dev/null || true
-	@echo "$(GREEN)[CLEAN]$(NC) Cleanup complete."
+## typecheck: Run type checking
+typecheck:
+	@$(POE) typecheck
+
+## quality: Run all quality checks
+quality:
+	@$(POE) quality
+
+# =============================================================================
+# Environment
+# =============================================================================
+
+## env-setup: Setup environment (dev, staging, production)
+env-setup:
+	@$(POE) env:setup $(ENV)
+
+## env-check: Verify environment setup
+env-check:
+	@$(POE) env:check
+
+# =============================================================================
+# Validation
+# =============================================================================
+
+## validate: Check conformance to Ayna Deployment Standard
+validate:
+	@./validate.sh
+
+# =============================================================================
+# Systemd Installation
+# =============================================================================
+
+## install-services: Install systemd service files
+install-services:
+	@echo "$(GREEN)[INSTALL]$(NC) Installing systemd services..."
+	sudo cp systemd/*.service /etc/systemd/system/
+	sudo systemctl daemon-reload
+	@echo "$(GREEN)[INSTALL]$(NC) Services installed. Enable with:"
+	@echo "  sudo systemctl enable $(PROJECT_NAME)-web $(PROJECT_NAME)-api $(PROJECT_NAME)-celery $(PROJECT_NAME)-beat"
 
 # =============================================================================
 # Help
@@ -142,9 +183,36 @@ clean:
 
 ## help: Show this help message
 help:
-	@echo "$(GREEN)Ayna Docker Deployment - $(PROJECT_NAME)$(NC)"
+	@echo "$(GREEN)$(PROJECT_NAME) - Ayna Deployment Standard v2.0$(NC)"
 	@echo ""
-	@echo "Usage: make [target]"
+	@echo "Development:"
+	@echo "  make run              Start development server"
+	@echo "  make run-web          Start web only"
+	@echo "  make run-api          Start API only"
 	@echo ""
-	@echo "Targets:"
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /' | column -t -s ':'
+	@echo "Deployment:"
+	@echo "  make deploy              Deploy (default: ENV=dev)"
+	@echo "  make deploy ENV=dev      Deploy to development"
+	@echo "  make deploy ENV=staging  Deploy to staging"
+	@echo "  make deploy ENV=production  Deploy to production"
+	@echo "  make rollback            Instant rollback"
+	@echo ""
+	@echo "Services:"
+	@echo "  make start        Start all services"
+	@echo "  make stop         Stop all services"
+	@echo "  make restart      Restart all services"
+	@echo "  make status       Show service status"
+	@echo "  make logs         Stream logs"
+	@echo ""
+	@echo "Database:"
+	@echo "  make migrate      Run migrations"
+	@echo "  make shell        Application shell"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test         Run tests"
+	@echo "  make lint         Run linters"
+	@echo "  make quality      Run all quality checks"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  make validate     Check template conformance"
+	@echo "  make install-services  Install systemd units"

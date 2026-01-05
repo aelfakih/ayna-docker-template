@@ -1,9 +1,8 @@
 #!/bin/bash
 #
-# Ayna Docker Standard - Conformance Validator
-# Version: 1.0.0
+# Ayna Deployment Standard v2.0 - Conformance Validator
 #
-# Checks that a project conforms to the Ayna Docker deployment standard.
+# Checks that a project conforms to the Ayna Deployment Standard.
 # Run from project root: ./validate.sh
 
 set -e
@@ -23,41 +22,51 @@ log_error() { echo -e "${RED}✗${NC} $1"; ERRORS=$((ERRORS+1)); }
 log_info() { echo -e "  $1"; }
 
 echo "================================================"
-echo "Ayna Docker Standard - Conformance Check"
+echo "Ayna Deployment Standard v2.0 - Conformance Check"
 echo "================================================"
 echo ""
 
-# Check required files
+# =============================================================================
+# Required Files
+# =============================================================================
+
 echo "Checking required files..."
 
 [ -f "Makefile" ] && log_ok "Makefile exists" || log_error "Makefile missing"
-[ -f ".env.example" ] && log_ok ".env.example exists" || log_error ".env.example missing"
-[ -f ".template-version" ] && log_ok ".template-version exists" || log_warn ".template-version missing (run update-template)"
+[ -f "pyproject.toml" ] && log_ok "pyproject.toml exists" || log_error "pyproject.toml missing"
+[ -f ".template-version" ] && log_ok ".template-version exists" || log_warn ".template-version missing"
 [ -f "validate.sh" ] && log_ok "validate.sh exists" || log_error "validate.sh missing"
 
 echo ""
 
-# Check directory structure
+# =============================================================================
+# Directory Structure
+# =============================================================================
+
 echo "Checking directory structure..."
 
-[ -d "docker" ] && log_ok "docker/ directory exists" || log_error "docker/ directory missing"
-[ -d "compose" ] && log_ok "compose/ directory exists" || log_error "compose/ directory missing"
+[ -d "scripts" ] && log_ok "scripts/ directory exists" || log_error "scripts/ directory missing"
+[ -d "systemd" ] && log_ok "systemd/ directory exists" || log_warn "systemd/ directory missing (create for production)"
+[ -d "web" ] && log_ok "web/ directory exists" || log_warn "web/ directory missing"
+[ -d "api" ] && log_ok "api/ directory exists" || log_warn "api/ directory missing"
 
-if [ -d "docker" ]; then
-    ls docker/*.Dockerfile >/dev/null 2>&1 && log_ok "Dockerfile(s) found in docker/" || log_error "No Dockerfiles in docker/"
+if [ -d "scripts" ]; then
+    [ -f "scripts/poe_commands.py" ] && log_ok "scripts/poe_commands.py exists" || log_error "scripts/poe_commands.py missing"
 fi
 
-if [ -d "compose" ]; then
-    [ -f "compose/dev.yml" ] && log_ok "compose/dev.yml exists" || log_warn "compose/dev.yml missing"
-    [ -f "compose/prod.yml" ] && log_ok "compose/prod.yml exists" || log_error "compose/prod.yml missing"
+if [ -d "systemd" ]; then
+    ls systemd/*.service >/dev/null 2>&1 && log_ok "systemd service files found" || log_warn "No systemd service files in systemd/"
 fi
 
 echo ""
 
-# Check Makefile targets
+# =============================================================================
+# Makefile Targets
+# =============================================================================
+
 echo "Checking Makefile targets..."
 
-REQUIRED_TARGETS="run build prod deploy rollback migrate shell logs stop status validate"
+REQUIRED_TARGETS="run deploy rollback migrate shell logs start stop restart status validate"
 
 for target in $REQUIRED_TARGETS; do
     if grep -q "^${target}:" Makefile 2>/dev/null; then
@@ -69,81 +78,123 @@ done
 
 echo ""
 
-# Check Dockerfile standards
-echo "Checking Dockerfile standards..."
+# =============================================================================
+# Poe Tasks
+# =============================================================================
 
-for dockerfile in docker/*.Dockerfile; do
-    [ -f "$dockerfile" ] || continue
+echo "Checking Poe tasks in pyproject.toml..."
 
-    name=$(basename "$dockerfile")
+if [ -f "pyproject.toml" ]; then
+    if grep -q '\[tool.poe.tasks' pyproject.toml; then
+        log_ok "[tool.poe.tasks] section exists"
 
-    # Check for python base image
-    if grep -q "FROM python:" "$dockerfile"; then
-        if grep -q "python:3.12" "$dockerfile"; then
-            log_ok "$name uses Python 3.12"
-        else
-            log_warn "$name should use python:3.12-slim"
-        fi
-    fi
-
-    # Check for WORKDIR
-    if grep -q "WORKDIR /app" "$dockerfile"; then
-        log_ok "$name has WORKDIR /app"
+        # Check for key Poe tasks
+        POE_TASKS="dev deploy rollback"
+        for task in $POE_TASKS; do
+            if grep -q "tasks.$task\]" pyproject.toml || grep -q "tasks.\"$task\"\]" pyproject.toml; then
+                log_ok "poe $task defined"
+            else
+                log_warn "poe $task not found"
+            fi
+        done
     else
-        log_warn "$name should use WORKDIR /app"
+        log_error "[tool.poe.tasks] section missing in pyproject.toml"
     fi
-
-    # Check for non-root user (production)
-    if grep -q "USER" "$dockerfile"; then
-        log_ok "$name runs as non-root user"
-    else
-        log_warn "$name should run as non-root user in production"
-    fi
-done
-
-echo ""
-
-# Check environment variables
-echo "Checking .env.example..."
-
-if [ -f ".env.example" ]; then
-    REQUIRED_VARS="PROJECT_NAME DATABASE_URL REDIS_URL SECRET_KEY"
-
-    for var in $REQUIRED_VARS; do
-        if grep -q "^${var}=" .env.example || grep -q "^#.*${var}=" .env.example; then
-            log_ok "$var documented"
-        else
-            log_warn "$var not documented in .env.example"
-        fi
-    done
 fi
 
 echo ""
 
-# Check compose files for health checks
-echo "Checking compose file standards..."
+# =============================================================================
+# Port Configuration
+# =============================================================================
 
-for compose in compose/*.yml; do
-    [ -f "$compose" ] || continue
+echo "Checking port configuration..."
 
-    name=$(basename "$compose")
+# Check if ports are defined in Makefile
+if grep -q "WEB_PORT" Makefile; then
+    WEB_PORT=$(grep "WEB_PORT" Makefile | head -1 | grep -oE '[0-9]+' | head -1)
+    if [ -n "$WEB_PORT" ]; then
+        log_ok "WEB_PORT defined: $WEB_PORT"
 
-    if grep -q "healthcheck:" "$compose"; then
-        log_ok "$name has health checks"
-    else
-        log_warn "$name should include health checks"
+        # Validate port is in acceptable range (8100-8199)
+        if [ "$WEB_PORT" -ge 8100 ] && [ "$WEB_PORT" -le 8199 ]; then
+            log_ok "WEB_PORT in valid range (8100-8199)"
+        else
+            log_warn "WEB_PORT $WEB_PORT is outside standard range (8100-8199)"
+        fi
     fi
-
-    if grep -q "env_file:" "$compose" || grep -q '${' "$compose"; then
-        log_ok "$name uses environment variables"
-    else
-        log_warn "$name should use .env file"
-    fi
-done
+else
+    log_warn "WEB_PORT not defined in Makefile"
+fi
 
 echo ""
 
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+
+echo "Checking environment configuration..."
+
+[ -f ".env" ] && log_ok ".env exists" || log_warn ".env missing (copy from .env.example)"
+[ -f ".env.example" ] && log_ok ".env.example exists" || log_warn ".env.example missing"
+
+if [ -d "shared" ]; then
+    log_ok "shared/ directory exists"
+    [ -d "shared/media" ] && log_ok "shared/media/ exists" || log_warn "shared/media/ missing"
+    [ -d "shared/backups" ] && log_ok "shared/backups/ exists" || log_warn "shared/backups/ missing"
+else
+    log_warn "shared/ directory missing (create for production)"
+fi
+
+echo ""
+
+# =============================================================================
+# Virtual Environment
+# =============================================================================
+
+echo "Checking Python environment..."
+
+if [ -d "venv" ]; then
+    log_ok "venv/ exists"
+    if [ -f "venv/bin/python" ]; then
+        PYTHON_VERSION=$(venv/bin/python --version 2>&1)
+        log_ok "Python: $PYTHON_VERSION"
+    fi
+    if [ -f "venv/bin/poe" ]; then
+        log_ok "Poe the Poet installed"
+    else
+        log_warn "Poe the Poet not installed (pip install poethepoet)"
+    fi
+else
+    log_warn "venv/ missing"
+fi
+
+echo ""
+
+# =============================================================================
+# Docker Cleanup (v2.0 removes Docker)
+# =============================================================================
+
+echo "Checking for Docker artifacts (should be removed in v2.0)..."
+
+if [ -d "docker" ]; then
+    log_warn "docker/ directory exists (can be removed for v2.0)"
+fi
+
+if [ -d "compose" ]; then
+    log_warn "compose/ directory exists (can be removed for v2.0)"
+fi
+
+if [ -f "docker-compose.yml" ] || [ -f "docker-compose.yaml" ]; then
+    log_warn "docker-compose.yml exists (can be removed for v2.0)"
+fi
+
+echo ""
+
+# =============================================================================
 # Summary
+# =============================================================================
+
 echo "================================================"
 echo "Summary"
 echo "================================================"
@@ -157,6 +208,6 @@ elif [ $ERRORS -eq 0 ]; then
 else
     echo -e "${RED}$ERRORS error(s), $WARNINGS warning(s)${NC}"
     echo ""
-    echo "Fix the errors above to conform to the Ayna Docker standard."
+    echo "Fix the errors above to conform to the Ayna Deployment Standard v2.0."
     exit 1
 fi
