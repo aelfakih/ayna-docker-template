@@ -258,7 +258,7 @@ args = [
 help = "Remove old releases (keep last N)"
 script = "scripts.poe_commands:releases_cleanup"
 args = [
-    { name = "keep", options = ["--keep", "-k"], type = "int", default = 10, help = "Number of releases to keep" }
+    { name = "keep", options = ["--keep", "-k"], type = "integer", default = 10, help = "Number of releases to keep" }
 ]
 
 # =============================================================================
