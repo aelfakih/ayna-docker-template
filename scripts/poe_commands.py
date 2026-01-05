@@ -598,10 +598,17 @@ def deploy(env: str = "production", skip_backup: bool = False) -> None:
     log_step(step, total_steps, "Copying code from git...")
     run_cmd(f"git archive HEAD | tar -x -C {release_dir}")
 
+    # Symlink .env and shared directories into release
+    env_file = PROJECT_ROOT / ".env"
+    if env_file.exists():
+        (release_dir / ".env").symlink_to(env_file.resolve())
+    if SHARED_DIR.exists():
+        (release_dir / "shared").symlink_to(SHARED_DIR)
+
     # Step 4: Install dependencies
     step += 1
     log_step(step, total_steps, "Installing dependencies...")
-    run_cmd(f"{VENV_DIR}/bin/pip install -e '.[web,api]'", cwd=release_dir)
+    run_cmd(f"{VENV_DIR}/bin/pip install -e '.[all]'", cwd=release_dir)
 
     # Step 5: Run migrations
     step += 1
