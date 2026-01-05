@@ -319,3 +319,15 @@ cmd = "mypy ."
 [tool.poe.tasks.quality]
 help = "Run all quality checks"
 sequence = ["format:check", "lint", "typecheck"]
+
+# =============================================================================
+# SYSTEMD INSTALLATION
+# =============================================================================
+
+[tool.poe.tasks."services:install"]
+help = "Install and enable systemd service files"
+script = "scripts.poe_commands:services_install"
+
+[tool.poe.tasks.validate]
+help = "Check conformance to Ayna Deployment Standard"
+script = "scripts.poe_commands:validate"

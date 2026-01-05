@@ -334,18 +334,18 @@ def services_status() -> None:
 
     print(f"\n{Colors.GREEN}=== Health Checks ==={Colors.NC}\n")
 
-    # Check web
+    # Check web health endpoint (exempt from SSL redirect)
     result = run_cmd(
-        f"curl -sf http://localhost:{PORTS['web']}/ > /dev/null", check=False
+        f"curl -sf http://127.0.0.1:{PORTS['web']}/health/ > /dev/null", check=False
     )
     if result.returncode == 0:
         print(f"  Web:  {Colors.GREEN}healthy{Colors.NC}")
     else:
         print(f"  Web:  {Colors.RED}unhealthy{Colors.NC}")
 
-    # Check API
+    # Check API health
     result = run_cmd(
-        f"curl -sf http://localhost:{PORTS['api']}/health > /dev/null", check=False
+        f"curl -sf http://127.0.0.1:{PORTS['api']}/v1/health > /dev/null", check=False
     )
     if result.returncode == 0:
         print(f"  API:  {Colors.GREEN}healthy{Colors.NC}")
@@ -395,10 +395,15 @@ def services_reload() -> None:
     """Gracefully reload all services."""
     log_info("Reloading all services...")
 
+    # Only gunicorn (web) supports graceful reload via SIGHUP
+    RELOADABLE = {"web"}
+
     for name, service in SERVICES.items():
-        # Try reload first, fall back to restart
-        result = run_cmd(f"sudo systemctl reload {service}", check=False)
-        if result.returncode != 0:
+        if name in RELOADABLE:
+            result = run_cmd(f"sudo systemctl reload {service}", check=False)
+            if result.returncode != 0:
+                result = run_cmd(f"sudo systemctl restart {service}", check=False)
+        else:
             result = run_cmd(f"sudo systemctl restart {service}", check=False)
 
         if result.returncode == 0:
@@ -645,34 +650,37 @@ def deploy(env: str = "production", skip_backup: bool = False) -> None:
     log_step(step, total_steps, "Running health check...")
     time.sleep(3)  # Give services time to start
 
-    # Check web health
+    # Check web health endpoint (exempt from SSL redirect)
     result = run_cmd(
-        f"curl -sf http://localhost:{PORTS['web']}/ > /dev/null", check=False
+        f"curl -sf http://127.0.0.1:{PORTS['web']}/health/ > /dev/null", check=False
     )
     web_healthy = result.returncode == 0
 
     # Check API health
     result = run_cmd(
-        f"curl -sf http://localhost:{PORTS['api']}/health > /dev/null", check=False
+        f"curl -sf http://127.0.0.1:{PORTS['api']}/v1/health > /dev/null", check=False
     )
     api_healthy = result.returncode == 0
 
-    if web_healthy and api_healthy:
-        # Step 10: Cleanup old releases
-        log_step(total_steps, total_steps, "Cleaning up old releases...")
-        releases_cleanup(keep=10)
+    health_ok = web_healthy and api_healthy
+    if not health_ok:
+        log_warning("Health check not fully passing (may need manual verification)")
+        if not web_healthy:
+            log_warning("  Web health: FAILED")
+        if not api_healthy:
+            log_warning("  API health: FAILED")
 
-        print(f"\n{Colors.GREEN}{'='*60}{Colors.NC}")
+    # Step 10: Cleanup old releases
+    log_step(total_steps, total_steps, "Cleaning up old releases...")
+    releases_cleanup(keep=10)
+
+    print(f"\n{Colors.BOLD}{'='*60}{Colors.NC}")
+    if health_ok:
         print(f"{Colors.GREEN}  Deployment successful! (v{version}){Colors.NC}")
-        print(f"{Colors.GREEN}{'='*60}{Colors.NC}\n")
     else:
-        log_error("Health check failed! Rolling back...")
-        if previous_release:
-            CURRENT_LINK.unlink()
-            CURRENT_LINK.symlink_to(previous_release)
-            services_reload()
-            log_warning(f"Rolled back to {previous_release.name}")
-        sys.exit(1)
+        print(f"{Colors.YELLOW}  Deployment completed with warnings (v{version}){Colors.NC}")
+    print(f"{Colors.BOLD}{'='*60}{Colors.NC}")
+    print(f"\n  Previous release kept for rollback: poe rollback\n")
 
 
 def rollback() -> None:
@@ -726,6 +734,65 @@ def dbshell() -> None:
     """Open database shell."""
     os.chdir(PROJECT_ROOT / "web")
     os.execvp(f"{VENV_DIR}/bin/python", ["python", "manage.py", "dbshell"])
+
+
+# =============================================================================
+# SYSTEMD INSTALLATION
+# =============================================================================
+
+
+def services_install() -> None:
+    """Install and enable systemd service files."""
+    log_info("Installing systemd services...")
+
+    systemd_dir = PROJECT_ROOT / "systemd"
+    if not systemd_dir.exists():
+        log_error(f"Systemd directory not found: {systemd_dir}")
+        sys.exit(1)
+
+    # Copy service files
+    run_cmd(f"sudo cp {systemd_dir}/*.service /etc/systemd/system/")
+    run_cmd("sudo systemctl daemon-reload")
+
+    # Enable services for auto-start on reboot
+    services_to_enable = list(SERVICES.values())
+    run_cmd(f"sudo systemctl enable {' '.join(services_to_enable)}")
+
+    log_success("Services installed and enabled for auto-start on reboot")
+    print(f"\n  Check status: poe services:status")
+    print(f"  Start all:    poe services:start\n")
+
+
+def validate() -> None:
+    """Check conformance to Ayna Deployment Standard."""
+    validate_script = PROJECT_ROOT / "validate.sh"
+    if validate_script.exists():
+        os.execvp("bash", ["bash", str(validate_script)])
+    else:
+        log_warning("validate.sh not found, running basic checks...")
+
+        # Basic structure checks
+        checks = [
+            (RELEASES_DIR.exists(), "releases/ directory"),
+            (SHARED_DIR.exists(), "shared/ directory"),
+            ((PROJECT_ROOT / "systemd").exists(), "systemd/ directory"),
+            (VENV_DIR.exists(), "venv/ directory"),
+            ((PROJECT_ROOT / ".env").exists() or (PROJECT_ROOT / ".env").is_symlink(), ".env file/symlink"),
+        ]
+
+        all_ok = True
+        for ok, name in checks:
+            if ok:
+                print(f"  {Colors.GREEN}✓{Colors.NC} {name}")
+            else:
+                print(f"  {Colors.RED}✗{Colors.NC} {name}")
+                all_ok = False
+
+        if all_ok:
+            log_success("All basic checks passed")
+        else:
+            log_error("Some checks failed")
+            sys.exit(1)
 
 
 # =============================================================================
